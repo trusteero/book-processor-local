@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Data Files (can be large)
+data/book_chunks.json
+*.backup-*
+
+# Reports (generated files)
+reports/*.txt
+reports/*.html
+reports/*.json
+
+# Logs
+*.log
+
+# Excel files (can be large)
+*.xlsx
+*.xls
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+temp_*.json
+*.tmp
+
+# Keep important config files
+!requirements.txt
+!CHUNKING_CONFIG.md
+!COMPLETE_WORKFLOW_GUIDE.md
+!CLEANUP_SUMMARY.md
+!FINAL_SETUP_SNOWFLAKE.md

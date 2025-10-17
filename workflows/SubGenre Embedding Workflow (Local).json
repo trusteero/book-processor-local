@@ -1,0 +1,350 @@
+{
+  "name": "SubGenre Embedding Workflow (Local)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        -16
+      ],
+      "id": "7f98b938-5f1a-42b9-945c-4ff3fc031765",
+      "name": "When clicking \u2018Execute workflow\u2019"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw",
+          "mode": "list",
+          "cachedResultName": "Master Subgenre List 2.1 16th Sept 2025",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 221988336,
+          "mode": "list",
+          "cachedResultName": "subgenres2.0_extendedv3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw/edit#gid=221988336"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -128,
+        -16
+      ],
+      "id": "b393236f-d37d-4ca8-b4bb-c1a1e16bbf6d",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/embeddings",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "nomic-embed-text"
+            },
+            {
+              "name": "input",
+              "value": "={{$json[\"text\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        256,
+        -16
+      ],
+      "id": "c621d288-3cc9-42a7-a20a-bda200b481cf",
+      "name": "HTTP Request",
+      "credentials": {
+        "openAiApi": {
+          "id": "bgKhx5zsrd0jKr2a",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mode: Run Once for All Items\n\n// Pull metadata from your prep node by exact name\nconst labels = $items('Subgenre Row into Embeddings ready string', 0, 0);\nconst responses = $input.all(); // embeddings from HTTP Request\n\nif (labels.length !== responses.length) {\n  throw new Error(`Count mismatch: labels=${labels.length} embeddings=${responses.length}`);\n}\n\n// Utility to make the vector one string (good for Google Sheets)\nfunction toBracketCSV(a){ return '[' + a.join(',') + ']'; }\n\nreturn responses.map((res, i) => {\n  const meta = labels[i].json;                 // {row_number?, subgenre, parent, text}\n  const vec  = res.json?.data?.[0]?.embedding; // the vector\n\n  if (!Array.isArray(vec)) {\n    throw new Error(`No embedding at item ${i}`);\n  }\n\n  return {\n    json: {\n      row_number: meta.row_number ?? null,\n      'Parent Genre': meta.parent ?? null,\n      'Sub Genre': meta.subgenre ?? null,\n      'Prototype Text': meta.text ?? null,\n      'Vector': toBracketCSV(vec)\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        224
+      ],
+      "id": "2c3f41f9-7543-4be9-a59a-2b729b27240a",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw",
+          "mode": "list",
+          "cachedResultName": "Master Subgenre List 2.1 16th Sept 2025",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2090100696,
+          "mode": "list",
+          "cachedResultName": "Vectors V3 No LGBTQIA+",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw/edit#gid=2090100696"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Parent Genre",
+              "displayName": "Parent Genre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sub Genre",
+              "displayName": "Sub Genre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Prototype Text",
+              "displayName": "Prototype Text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Vector",
+              "displayName": "Vector",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        592,
+        224
+      ],
+      "id": "06dfb98d-2886-4c5a-a2ff-319825f5d95d",
+      "name": "Google Sheets1",
+      "executeOnce": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "This accesses the Subgenre Taxonomy Master Sheet and reads the Subgenres",
+        "height": 140,
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        -208
+      ],
+      "typeVersion": 1,
+      "id": "42acf194-342f-4338-8284-be83e6b2af44",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "This node sends the data to OpenAI - it doesn't use the typical OpenAI node because this isn't messaging a typical LLM model.",
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        352,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "0862a3b0-5af6-4b2a-aced-9d420f66f867",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "This node organises that data ready to send to OpenAI",
+        "height": 140,
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        144,
+        -208
+      ],
+      "typeVersion": 1,
+      "id": "74465b60-6526-404a-966d-fbb29b1676dc",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "This node organises the output to match the order of the subgenres",
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        368,
+        384
+      ],
+      "typeVersion": 1,
+      "id": "6ede1418-9310-4dc7-868f-929c03865e1c",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "This node writes the code back to the original sheet in a different specified column",
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        560,
+        384
+      ],
+      "typeVersion": 1,
+      "id": "61fd9df6-99c0-40fa-afbe-9a5e0c186d9e",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: items with columns:\n// \"Parent Genre\", \"Sub Genre\", \"Short Description\", \"Key Themes/Motifs\", \"Common Tropes\", \"Synonyms\"\n// Output: items with { subgenre, parent, text } where text is the prototype card\n\nconst rows = items.map(i => i.json);\n\nfunction splitList(v){\n  return String(v ?? \"\")\n    .split(/[,;\\n]\\s*/g)\n    .map(s => s.trim())\n    .filter(Boolean);\n}\n\nfunction composePrototypeCard(r){\n  const lines = [];\n  const add = s => { if (s && String(s).trim()) lines.push(String(s)); };\n\n  const sub = r[\"Sub Genre\"] ?? \"\";\n  const par = r[\"Parent Genre\"] ?? \"\";\n  const desc = r[\"Short Description\"] ?? \"\";\n\n  const motifs = splitList(r[\"Key Themes/Motifs\"]);\n  const tropes = splitList(r[\"Common Tropes\"]);\n  const syns   = splitList(r[\"Synonyms\"]);\n\n  add(`Subgenre: ${sub}`);\n  add(`Parent: ${par}`);\n  add(\"\");\n  add(\"Short description:\");\n  add(desc.trim());\n\n  if (motifs.length){\n    add(\"\"); add(\"Key motifs:\");\n    motifs.forEach(m => add(`- ${m}`));\n  }\n\n  if (tropes.length){\n    add(\"\"); add(\"Common tropes:\");\n    tropes.forEach(t => add(`- ${t}`));\n  }\n\n  if (syns.length){\n    add(\"\"); add(\"Synonyms:\");\n    syns.forEach(s => add(`- ${s}`));\n  }\n\n  return lines.join(\"\\n\");\n}\n\nreturn rows\n  .filter(r => (r[\"Sub Genre\"] ?? \"\").toString().trim())\n  .map(r => ({\n    json: {\n      subgenre: r[\"Sub Genre\"],\n      parent: r[\"Parent Genre\"],\n      text: composePrototypeCard(r)\n    }\n  }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        -16
+      ],
+      "id": "815ea304-88ed-405c-b168-09120465f305",
+      "name": "Subgenre Row into Embeddings ready string"
+    },
+    {
+      "parameters": {
+        "content": "## THIS WORKFLOW IS DESIGNED TO TAKE THE SUBGENRE TAXONOMY TEXT AND CONVERT IT INTO VECTORS\n",
+        "height": 224,
+        "width": 304
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -496,
+        -448
+      ],
+      "typeVersion": 1,
+      "id": "9ff1e504-2643-4ffd-bbbe-9cbe1c2f6fc9",
+      "name": "Sticky Note5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking \u2018Execute workflow\u2019": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Subgenre Row into Embeddings ready string",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subgenre Row into Embeddings ready string": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1efdc13a-1c60-4a06-9bcf-86a14f6ca443",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "668a0da826eff8bdd09242bbe2d2a2dbb4c4bc52c54e40950599c36764b12319"
+  },
+  "id": "GaMWFFWpiXH7hoyr",
+  "tags": []
+}

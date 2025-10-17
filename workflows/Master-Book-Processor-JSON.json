@@ -1,0 +1,582 @@
+{
+  "name": "Master Book Processor (JSON Data)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "master-book-processor-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "57d2e7f7-61c7-45d3-bda9-e5c949609f7c",
+      "name": "Webhook - Upload Manuscript",
+      "webhookId": "master-book-processor-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"processing_started\", \"message\": \"Your manuscript is being processed. This may take a few minutes.\", \"book_title\": $json.body.book_title || $json.book_title || \"Unknown\" } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        200,
+        0
+      ],
+      "id": "respond-processing-started-node",
+      "name": "Respond - Processing Started"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Process uploaded text data\nconst items = $input.all();\nconst item = items[0];\n\n// Get text from different possible locations\nconst manuscriptText = item.json.body?.text || item.json.text || item.json.body?.data?.text || item.json.data?.text;\nconst bookTitle = item.json.body?.book_title || item.json.book_title || item.json.body?.data?.book_title || item.json.data?.book_title || 'Unknown Manuscript';\n\nif (!manuscriptText) {\n  throw new Error('No manuscript text found. Send: { \"text\": \"your manuscript here\", \"book_title\": \"Your Book\" }');\n}\n\nreturn [{\n  json: {\n    Manu_data: manuscriptText,\n    book_title: bookTitle,\n    text_length: manuscriptText.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "cdc86d3f-1960-4c34-b4c3-56d67108cf55",
+      "name": "Process Upload Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chunk the manuscript with CONFIGURABLE OVERLAPPING chunks\nconst items = $input.all();\nconst fullText = items[0].json.Manu_data || '';\nconst bookTitle = items[0].json.book_title || 'Unknown';\n\n// ===== CONFIGURATION =====\nconst CHUNK_SIZE = 1000;        // Words per chunk\nconst OVERLAP_PERCENT = 0.20;   // 20% overlap (0.0 - 1.0)\nconst USE_FULL_BOOK = false;    // true = process entire book, false = limit chunks\nconst MAX_CHUNKS = 10;          // Only used if USE_FULL_BOOK = false\n// =========================\n\n// Split into words\nconst words = fullText.trim().split(/\\s+/);\nconst totalWords = words.length;\n\nconst chunks = [];\nlet position = 0;\nlet chunkCount = 0;\n\n// Calculate step size (how many words to advance for next chunk)\nconst overlapWords = Math.floor(CHUNK_SIZE * OVERLAP_PERCENT);\nconst stepSize = CHUNK_SIZE - overlapWords;\n\nconsole.log(`Total words: ${totalWords}`);\nconsole.log(`Chunk size: ${CHUNK_SIZE} words`);\nconsole.log(`Overlap: ${OVERLAP_PERCENT * 100}% (${overlapWords} words)`);\nconsole.log(`Step size: ${stepSize} words`);\n\n// Create chunks with overlap\nwhile (position < totalWords) {\n  // Check if we've hit the chunk limit\n  if (!USE_FULL_BOOK && chunkCount >= MAX_CHUNKS) {\n    console.log(`Reached max chunks limit: ${MAX_CHUNKS}`);\n    break;\n  }\n  \n  // Extract chunk\n  const endPosition = Math.min(position + CHUNK_SIZE, totalWords);\n  const chunkWords = words.slice(position, endPosition);\n  const chunkText = chunkWords.join(' ');\n  \n  chunks.push({\n    json: {\n      book_title: bookTitle,\n      chunk_number: chunkCount + 1,\n      chunk_text: chunkText,\n      word_count: chunkWords.length,\n      start_word: position,\n      end_word: endPosition,\n      overlap_with_previous: position > 0 ? overlapWords : 0\n    }\n  });\n  \n  chunkCount++;\n  \n  // Move to next chunk position\n  position += stepSize;\n  \n  // If remaining words are less than half chunk size, break to avoid tiny final chunk\n  if (totalWords - position < CHUNK_SIZE / 2 && chunkCount > 0) {\n    console.log(`Stopping: Only ${totalWords - position} words remaining (less than half chunk)`);\n    break;\n  }\n}\n\nconsole.log(`Created ${chunks.length} chunks with ${OVERLAP_PERCENT * 100}% overlap`);\n\nreturn chunks;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "id": "5e1995f4-00ac-4f0f-8ad2-ee22f36a72af",
+      "name": "Chunk Text"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"llama3.2\", \"prompt\": \"Analyze this excerpt briefly: Genre? Themes? Audience?\\n\\n\" + $json.chunk_text, \"stream\": false, \"options\": { \"temperature\": 0.7, \"num_predict\": 500 } } }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        0
+      ],
+      "id": "91a8f895-dc81-477e-873a-63886880e8f7",
+      "name": "AI Analysis (llama3.2)",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Preserve chunk_text and add AI analysis\nconst items = $input.all();\n\nreturn items.map(item => ({\n  json: {\n    chunk_text: item.json.chunk_text,\n    book_title: item.json.book_title,\n    chunk_number: item.json.chunk_number,\n    word_count: item.json.word_count,\n    ai_analysis: item.json.response || '',\n    // Keep chunk_text for embeddings\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "5de43aa2-02d0-415e-a008-ab5703daa654",
+      "name": "Preserve Chunk Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/embeddings",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "snowflake-arctic-embed"
+            },
+            {
+              "name": "prompt",
+              "value": "={{ $json.chunk_text || $json.Manu_data || 'test' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "06c6be2f-3207-43a8-8bca-313a7faf3f1d",
+      "name": "Generate Embeddings"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Merge embedding back with chunk data - FIXED VERSION\nconst embeddingResponse = $input.all();\nconst originalData = $items('Preserve Chunk Data');\n\nif (embeddingResponse.length !== originalData.length) {\n  throw new Error(`Mismatch: ${embeddingResponse.length} embeddings for ${originalData.length} chunks`);\n}\n\n// Each embedding response corresponds to one chunk\nconst results = originalData.map((item, i) => {\n  // Get the embedding from the corresponding response item\n  const embeddingItem = embeddingResponse[i].json;\n  const embedding = embeddingItem.embedding;\n  \n  if (!embedding || !Array.isArray(embedding)) {\n    throw new Error(`Chunk ${i+1}: No valid embedding found. Got: ${JSON.stringify(embeddingItem).substring(0, 100)}`);\n  }\n  \n  return {\n    json: {\n      book_title: item.json.book_title,\n      chunk_number: item.json.chunk_number,\n      chunk_text: item.json.chunk_text,  // Preserve this!\n      word_count: item.json.word_count,\n      embedding: embedding\n    }\n  };\n});\n\nconsole.log(`Successfully merged ${results.length} chunks with their embeddings`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -100
+      ],
+      "id": "merge-embedding-data-node",
+      "name": "Merge Embedding with Chunk Data"
+    },
+    {
+      "parameters": {
+        "filePath": "/Users/eerogetlost/book-processor-local/data/subgenres.json"
+      },
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        200
+      ],
+      "id": "bff22d58-1bea-456f-ae9c-b581d109f493",
+      "name": "Load Subgenres JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse subgenres from binary file\nconst items = $input.all();\n\n// Get binary data from Read Binary File node\nconst binaryData = items[0].binary?.data;\nif (!binaryData) {\n  throw new Error('No binary data found');\n}\n\n// The data is base64 encoded, decode it\nlet jsonText;\nif (typeof binaryData === 'string') {\n  // If it's a base64 string, decode it\n  const buffer = Buffer.from(binaryData, 'base64');\n  jsonText = buffer.toString('utf8');\n} else if (binaryData.data) {\n  // If it has a data property\n  const buffer = Buffer.from(binaryData.data, 'base64');\n  jsonText = buffer.toString('utf8');\n} else {\n  throw new Error('Unexpected binary data format');\n}\n\n// Parse JSON\nconst subgenres = JSON.parse(jsonText);\n\n// Filter out items without embeddings\nconst validGenres = subgenres.filter(g => g.embedding && Array.isArray(g.embedding));\n\n// Return in the format expected by Calculate Genre Similarity\nreturn validGenres.map(genre => ({\n  json: {\n    'Sub Genre': genre.sub_genre,\n    'Parent Genre': genre.parent_genre,\n    'Prototype Text': genre.prototype_text,\n    'Vector': JSON.stringify(genre.embedding)\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ],
+      "id": "json-parser-node-123",
+      "name": "Parse Subgenres JSON"
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1300,
+        150
+      ],
+      "id": "merge-node-123",
+      "name": "Merge Branches"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate cosine similarity between book and genres WITH EXPLAINABILITY\nconst allInputs = $input.all();\n\nconsole.log('Total inputs received:', allInputs.length);\n\n// Separate book embeddings from genre data\nlet bookItems = [];\nlet genreItems = [];\n\nfor (const item of allInputs) {\n  if (item.json['Sub Genre']) {\n    genreItems.push(item);\n  } else if (item.json.embedding) {\n    bookItems.push(item);\n  }\n}\n\nconsole.log('Book items:', bookItems.length);\nconsole.log('Genre items:', genreItems.length);\n\nif (bookItems.length === 0 || genreItems.length === 0) {\n  throw new Error(`Missing data: books=${bookItems.length}, genres=${genreItems.length}`);\n}\n\n// === UTILITY FUNCTIONS ===\n\nfunction cosineSimilarity(vec1, vec2) {\n  let dot = 0, mag1 = 0, mag2 = 0;\n  for (let i = 0; i < vec1.length; i++) {\n    dot += vec1[i] * vec2[i];\n    mag1 += vec1[i] * vec1[i];\n    mag2 += vec2[i] * vec2[i];\n  }\n  return dot / (Math.sqrt(mag1) * Math.sqrt(mag2));\n}\n\nfunction extractKeywords(text, topN = 10) {\n  if (!text) return [];\n  \n  // Extract meaningful keywords\n  const stopWords = new Set(['the', 'and', 'for', 'that', 'this', 'with', 'from', 'are', 'was', 'were', 'have', 'has', 'had', 'they', 'their', 'them', 'what', 'when', 'where', 'which', 'will', 'would', 'could', 'should', 'been', 'being', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once']);\n  \n  const words = text.toLowerCase()\n    .replace(/[^\\w\\s'-]/g, ' ')\n    .split(/\\s+/)\n    .filter(w => w.length > 3 && !stopWords.has(w));\n  \n  // Count frequency\n  const freq = {};\n  words.forEach(w => freq[w] = (freq[w] || 0) + 1);\n  \n  // Return top N\n  return Object.entries(freq)\n    .sort((a, b) => b[1] - a[1])\n    .slice(0, topN)\n    .map(([word, count]) => ({word, count}));\n}\n\nfunction findMatchingKeywords(bookKeywords, genreText) {\n  if (!genreText || bookKeywords.length === 0) return [];\n  \n  const genreWords = genreText.toLowerCase().split(/\\s+/);\n  const genreSet = new Set(genreWords);\n  \n  return bookKeywords.filter(({word}) => {\n    // Exact match\n    if (genreSet.has(word)) return true;\n    // Partial match (plurals, word stems)\n    return genreWords.some(gw => \n      (gw.length > 4 && word.startsWith(gw.substring(0, 4))) ||\n      (word.length > 4 && gw.startsWith(word.substring(0, 4)))\n    );\n  });\n}\n\n// === MAIN PROCESSING ===\n\nconst results = [];\n\nfor (const bookItem of bookItems) {\n  const bookVector = bookItem.json.embedding;\n  const bookText = bookItem.json.chunk_text || '';\n  const bookTitle = bookItem.json.book_title || 'Unknown';\n  const chunkNum = bookItem.json.chunk_number || bookItem.json.index || 1;\n  \n  // Extract book keywords once\n  const bookKeywords = extractKeywords(bookText, 20);\n  \n  const similarities = genreItems.map(genreItem => {\n    const genreVector = JSON.parse(genreItem.json.Vector);\n    const similarity = cosineSimilarity(bookVector, genreVector);\n    \n    // Get genre prototype text\n    const prototypeText = genreItem.json['Prototype Text'] || '';\n    \n    // Find matching keywords (exact/partial matches)\n    const exactMatches = findMatchingKeywords(bookKeywords, prototypeText);\n    \n    // ALWAYS include top book keywords for this genre\n    // Even if no exact matches, show what words were in the book\n    const topBookKeywords = bookKeywords.slice(0, 8);\n    \n    return {\n      subgenre: genreItem.json['Sub Genre'],\n      parent_genre: genreItem.json['Parent Genre'],\n      prototype_text: prototypeText,\n      similarity: similarity,\n      matching_keywords: exactMatches,           // Exact/partial matches\n      book_keywords: topBookKeywords,            // Top 8 from book\n      keyword_match_count: exactMatches.length   // How many matched\n    };\n  });\n  \n  // Sort by similarity and get top 5\n  similarities.sort((a, b) => b.similarity - a.similarity);\n  const top20 = similarities.slice(0, 20);\n  \n  results.push({\n    json: {\n      book_title: bookTitle,\n      chunk_number: chunkNum,\n      chunk_text: bookText.substring(0, 500),\n      top_genres: top20\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        100
+      ],
+      "id": "c8e0a98a-072f-44f2-a698-cd321fb81801",
+      "name": "Calculate Genre Similarity"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all analysis and similarity results WITH KEYWORDS AND CHUNK DATA\nconst items = $input.all();\n\n// Group by book\nconst bookData = {\n  book_title: items[0]?.json.book_title || 'Unknown',\n  total_chunks: items.length,\n  genre_matches: {},\n  analysis_summary: [],\n  chunk_details: []  // NEW: Store chunk-by-chunk data\n};\n\n// Aggregate genre votes AND collect keyword explanations AND chunk data\nfor (const item of items) {\n  // Store chunk-level details\n  if (item.json.chunk_number && item.json.top_genres) {\n    bookData.chunk_details.push({\n      chunk_number: item.json.chunk_number,\n      chunk_preview: item.json.chunk_text ? item.json.chunk_text.substring(0, 150) : '',\n      top_5_genres: item.json.top_genres.slice(0, 5).map(g => ({\n        subgenre: g.subgenre,\n        parent: g.parent_genre,\n        similarity: g.similarity\n      }))\n    });\n  }\n  \n  if (item.json.top_genres) {\n    for (const genre of item.json.top_genres) {\n      const key = genre.subgenre;\n      if (!bookData.genre_matches[key]) {\n        bookData.genre_matches[key] = {\n          subgenre: genre.subgenre,\n          parent: genre.parent_genre,\n          prototype_text: genre.prototype_text,\n          votes: 0,\n          avg_similarity: 0,\n          scores: [],\n          matching_keywords: genre.matching_keywords || [],\n          book_keywords: genre.book_keywords || []\n        };\n      }\n      bookData.genre_matches[key].votes++;\n      bookData.genre_matches[key].scores.push(genre.similarity);\n      \n      // Merge matching keywords\n      if (genre.matching_keywords) {\n        const existing = new Set(bookData.genre_matches[key].matching_keywords.map(k => k.word));\n        for (const kw of genre.matching_keywords) {\n          if (!existing.has(kw.word)) {\n            bookData.genre_matches[key].matching_keywords.push(kw);\n          }\n        }\n      }\n    }\n  }\n}\n\n// Calculate averages\nfor (const key in bookData.genre_matches) {\n  const match = bookData.genre_matches[key];\n  match.avg_similarity = match.scores.reduce((a, b) => a + b, 0) / match.scores.length;\n  delete match.scores;\n}\n\n// Sort by votes and similarity\nconst sortedGenres = Object.values(bookData.genre_matches)\n  .sort((a, b) => b.votes - a.votes || b.avg_similarity - a.avg_similarity);\n\n// Sort chunks by chunk_number\nbookData.chunk_details.sort((a, b) => a.chunk_number - b.chunk_number);\n\nreturn [{\n  json: {\n    ...bookData,\n    top_20_genres: sortedGenres.slice(0, 20),\n    processing_complete: true,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        100
+      ],
+      "id": "dc263151-d7fd-4f0d-9d14-4efcc191723d",
+      "name": "Aggregate Results"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Prepare AI explanation requests for top 3 genres\nconst items = $input.all();\nconst data = items[0].json;\n\nconst requests = [];\n\n// Generate explanation for top 3 genres\nfor (let i = 0; i < Math.min(3, data.top_5_genres.length); i++) {\n  const genre = data.top_5_genres[i];\n  \n  const matchingWords = genre.matching_keywords?.map(k => k.word).join(', ') || 'various themes';\n  const bookKeywords = genre.book_keywords?.map(k => k.word).join(', ') || 'not available';\n  \n  const prompt = `This book was classified as \"${genre.subgenre}\" (${(genre.avg_similarity * 100).toFixed(1)}% match).\n\nBook keywords: ${bookKeywords}\nGenre: ${genre.parent} > ${genre.subgenre}\nMatching concepts: ${matchingWords}\n\nIn 2-3 concise sentences, explain why this classification makes sense. Focus on the matching keywords and themes.`;\n\n  requests.push({\n    json: {\n      genre_rank: i + 1,\n      genre_name: genre.subgenre,\n      parent_genre: genre.parent,\n      similarity: genre.avg_similarity,\n      matching_keywords: genre.matching_keywords,\n      prompt: prompt,\n      book_data: data\n    }\n  });\n}\n\nreturn requests;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        100
+      ],
+      "id": "prepare-explanations-node",
+      "name": "Prepare AI Explanations",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"llama3.2\", \"prompt\": $json.prompt, \"stream\": false, \"options\": { \"temperature\": 0.7, \"num_predict\": 150 } } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1850,
+        100
+      ],
+      "id": "llama-explanation-node",
+      "name": "Generate AI Explanation (llama3.2)",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Aggregate AI explanations back into the result\nconst items = $input.all();\n\n// The first item's book_data has the original data\nlet bookData = null;\n\n// Find book_data from any item\nfor (const item of items) {\n  if (item.json.book_data) {\n    bookData = item.json.book_data;\n    break;\n  }\n}\n\nif (!bookData) {\n  throw new Error('No book_data found in items. Keys in first item: ' + JSON.stringify(Object.keys(items[0]?.json || {})));\n}\n\n// Collect all explanations from llama responses\nconst explanations = items.map(item => ({\n  genre_rank: item.json.genre_rank,\n  genre_name: item.json.genre_name,\n  parent_genre: item.json.parent_genre,\n  similarity: item.json.similarity,\n  matching_keywords: item.json.matching_keywords,\n  ai_explanation: item.json.response || 'Explanation generation failed'\n}));\n\n// Sort by rank\nexplanations.sort((a, b) => a.genre_rank - b.genre_rank);\n\n// Add explanations to top genres\nif (bookData.top_5_genres) {\n  for (let i = 0; i < explanations.length; i++) {\n    const exp = explanations[i];\n    const genreIdx = exp.genre_rank - 1;\n    if (bookData.top_5_genres[genreIdx]) {\n      bookData.top_5_genres[genreIdx].ai_explanation = exp.ai_explanation;\n    }\n  }\n}\n\nreturn [{\n  json: bookData\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        100
+      ],
+      "id": "aggregate-explanations-node",
+      "name": "Aggregate Explanations",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format final report WITH KEYWORD EXPLANATIONS AND CHUNK-BY-CHUNK ANALYSIS\nconst data = $input.all()[0].json;\n\n// Ensure top_20_genres exists\nif (!data.top_20_genres || !Array.isArray(data.top_20_genres)) {\n  throw new Error('No top_20_genres data found. Data keys: ' + JSON.stringify(Object.keys(data)));\n}\n\n// Build keyword explanation section\nlet explanationsSection = '';\nif (data.top_20_genres.length > 0) {\n  explanationsSection = '\\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\n';\n  explanationsSection += '\ud83d\udd0d KEYWORD ANALYSIS\\n';\n  explanationsSection += '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\n\\n';\n  \n  for (let i = 0; i < Math.min(20, data.top_20_genres.length); i++) {\n    const genre = data.top_20_genres[i];\n    explanationsSection += `${i + 1}. ${genre.subgenre} (${(genre.avg_similarity * 100).toFixed(1)}% match)\\n`;\n    \n    // ALWAYS show top book keywords (what created the embedding)\n    if (genre.book_keywords && genre.book_keywords.length > 0) {\n      const bookKw = genre.book_keywords.slice(0, 8).map(k => `${k.word}(${k.count}\u00d7)`).join(', ');\n      explanationsSection += `   \ud83d\udcd6 Book themes: ${bookKw}\\n`;\n    }\n    \n    // Show exact matches if any\n    if (genre.matching_keywords && genre.matching_keywords.length > 0) {\n      const matchKw = genre.matching_keywords.slice(0, 5).map(k => k.word).join(', ');\n      explanationsSection += `   \u2705 Direct matches: ${matchKw}\\n`;\n    } else {\n      explanationsSection += `   \u2139\ufe0f  Match based on semantic meaning (no direct word overlap)\\n`;\n    }\n    \n    explanationsSection += '\\n';\n  }\n}\n\n// Build chunk-by-chunk section\nlet chunkSection = '';\nif (data.chunk_details && data.chunk_details.length > 0) {\n  chunkSection = '\\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\n';\n  chunkSection += '\ud83d\udcc4 CHUNK-BY-CHUNK GENRE ANALYSIS\\n';\n  chunkSection += '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\n\\n';\n  \n  for (const chunk of data.chunk_details) {\n    chunkSection += `CHUNK ${chunk.chunk_number}\\n`;\n    if (chunk.chunk_preview) {\n      chunkSection += `Preview: \"${chunk.chunk_preview}...\"\\n\\n`;\n    }\n    chunkSection += 'Top 5 Genre Matches:\\n';\n    for (let i = 0; i < chunk.top_5_genres.length; i++) {\n      const g = chunk.top_5_genres[i];\n      chunkSection += `  ${i + 1}. ${g.subgenre} (${g.parent}) - ${(g.similarity * 100).toFixed(1)}%\\n`;\n    }\n    chunkSection += '\\n';\n  }\n}\n\nconst report = `\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udcda MANUSCRIPT ANALYSIS REPORT\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nBook: ${data.book_title}\nProcessed: ${new Date(data.timestamp).toLocaleString()}\nChunks Analyzed: ${data.total_chunks}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83c\udfaf TOP 20 GENRE MATCHES\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n${data.top_20_genres.map((g, i) => \n  `${i + 1}. ${g.subgenre} (${g.parent})\n   Match Score: ${(g.avg_similarity * 100).toFixed(1)}%\n   Confidence: ${g.votes}/${data.total_chunks} chunks`\n).join('\\n\\n')}\n${explanationsSection}${chunkSection}\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u2705 PROCESSING COMPLETE\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nAll processing done locally with Ollama!\n- Embeddings: snowflake-arctic-embed (1024-dim)\n- Genre Matching: 485 subgenres\n- Keyword Analysis: Included\n- No API costs incurred\n`;\n\nreturn [{\n  json: {\n    ...data,\n    report: report,\n    report_html: report.replace(/\\n/g, '<br>').replace(/ /g, '&nbsp;')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        100
+      ],
+      "id": "0f9dc03d-864f-4550-b3fd-307b371c4f2b",
+      "name": "Format Report"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Prepare file data for saving\nconst items = $input.all();\nconst data = items[0].json;\n\nconst bookTitle = (data.book_title || 'unknown').replace(/[^a-z0-9]/gi, '_').toLowerCase();\nconst timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);\nconst baseFilename = `${bookTitle}_${timestamp}`;\n\n// Create HTML content\nconst htmlContent = `<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <title>Genre Analysis: ${data.book_title}</title>\n    <style>\n        body {\n            font-family: 'Courier New', monospace;\n            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);\n            color: #d4d4d4;\n            padding: 40px;\n            margin: 0;\n            min-height: 100vh;\n        }\n        .container {\n            max-width: 1200px;\n            margin: 0 auto;\n            background-color: #252526;\n            border-radius: 12px;\n            box-shadow: 0 8px 32px rgba(0,0,0,0.3);\n            padding: 40px;\n        }\n        .header {\n            text-align: center;\n            margin-bottom: 40px;\n            border-bottom: 2px solid #4ec9b0;\n            padding-bottom: 20px;\n        }\n        .header h1 {\n            color: #4ec9b0;\n            margin: 0 0 10px 0;\n        }\n        .badge {\n            background-color: #4ec9b0;\n            color: #1e1e1e;\n            padding: 4px 12px;\n            border-radius: 12px;\n            font-size: 0.85em;\n            font-weight: bold;\n        }\n        pre {\n            background-color: #1e1e1e;\n            padding: 30px;\n            border-radius: 8px;\n            border: 1px solid #3e3e42;\n            white-space: pre-wrap;\n            line-height: 1.8;\n        }\n        .footer {\n            margin-top: 40px;\n            padding-top: 20px;\n            border-top: 1px solid #3e3e42;\n            text-align: center;\n            color: #858585;\n            font-size: 0.9em;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>\ud83d\udcda Book Genre Analysis</h1>\n            <div><strong>${data.book_title}</strong></div>\n            <div class=\"badge\">${data.top_20_genres[0]?.subgenre || 'Unknown'}</div>\n        </div>\n        <pre>${data.report_html}</pre>\n        <div class=\"footer\">\n            Powered by Ollama \u2022 snowflake-arctic-embed \u2022 485 subgenres\n        </div>\n    </div>\n</body>\n</html>`;\n\n// Return 3 items (one for each file to write)\nreturn [\n  {\n    json: {\n      ...data,\n      filename: baseFilename + '.txt',\n      filepath: '/Users/eerogetlost/book-processor-local/reports/' + baseFilename + '.txt',\n      content: data.report,\n      file_type: 'txt'\n    }\n  },\n  {\n    json: {\n      ...data,\n      filename: baseFilename + '.html',\n      filepath: '/Users/eerogetlost/book-processor-local/reports/' + baseFilename + '.html',\n      content: htmlContent,\n      file_type: 'html'\n    }\n  },\n  {\n    json: {\n      ...data,\n      filename: baseFilename + '.json',\n      filepath: '/Users/eerogetlost/book-processor-local/reports/' + baseFilename + '.json',\n      content: JSON.stringify(data, null, 2),\n      file_type: 'json'\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1900,
+        100
+      ],
+      "id": "save-reports-node",
+      "name": "Save Reports to Disk"
+    },
+    {
+      "parameters": {
+        "command": "=cat > {{ $json.filepath }} << 'EOFMARKER'\n{{ $json.content }}\nEOFMARKER"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        100
+      ],
+      "id": "write-file-node",
+      "name": "Write Files to Disk"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        2000,
+        100
+      ],
+      "id": "86a833cb-bf77-4873-8415-d5c9e9042951",
+      "name": "Save Results (Optional)",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"complete\", \"book_title\": $json.book_title, \"top_genre\": $json.top_20_genres[0].subgenre, \"report\": $json.report } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2200,
+        100
+      ],
+      "id": "0d675ef8-a71c-4474-91be-21ffd8ddbc73",
+      "name": "Return Results"
+    }
+  ],
+  "connections": {
+    "Webhook - Upload Manuscript": {
+      "main": [
+        [
+          {
+            "node": "Respond - Processing Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond - Processing Started": {
+      "main": [
+        [
+          {
+            "node": "Process Upload Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Upload Data": {
+      "main": [
+        [
+          {
+            "node": "Chunk Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Text": {
+      "main": [
+        [
+          {
+            "node": "Preserve Chunk Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis (llama3.2)": {
+      "main": [
+        [
+          {
+            "node": "Preserve Chunk Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Merge Embedding with Chunk Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Subgenres JSON": {
+      "main": [
+        [
+          {
+            "node": "Parse Subgenres JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Subgenres JSON": {
+      "main": [
+        [
+          {
+            "node": "Merge Branches",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Branches": {
+      "main": [
+        [
+          {
+            "node": "Calculate Genre Similarity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Genre Similarity": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Report": {
+      "main": [
+        [
+          {
+            "node": "Save Reports to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Results (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Return Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve Chunk Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Embeddings",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Load Subgenres JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Explanations": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Explanation (llama3.2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Explanation (llama3.2)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Explanations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Explanations": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Embedding with Chunk Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Reports to Disk": {
+      "main": [
+        [
+          {
+            "node": "Write Files to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Files to Disk": {
+      "main": [
+        [
+          {
+            "node": "Save Results (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 3600,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "meta": {
+    "instanceId": "76c34330-7e0e-4037-abf2-46612b99824b"
+  },
+  "tags": []
+}

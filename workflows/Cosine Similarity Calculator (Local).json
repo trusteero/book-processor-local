@@ -1,0 +1,418 @@
+{
+  "name": "Cosine Similarity Calculator (Local)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -336,
+        -48
+      ],
+      "id": "8237acb8-f8c3-46b1-8cfa-7fe492e0c1c9",
+      "name": "When clicking \u2018Execute workflow\u2019"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1dxi4_px641nbN0VPYHwJCPLAb4X_mmMykOqDDmuUf2A",
+          "mode": "list",
+          "cachedResultName": "Tuesdays at Six Chunk Page",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dxi4_px641nbN0VPYHwJCPLAb4X_mmMykOqDDmuUf2A/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1672422567,
+          "mode": "list",
+          "cachedResultName": "Book Vectors Multi",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dxi4_px641nbN0VPYHwJCPLAb4X_mmMykOqDDmuUf2A/edit#gid=1672422567"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -144,
+        -48
+      ],
+      "id": "12ea42bc-8ecc-4e0f-9392-7c5db4cdaaee",
+      "name": "Google Sheets2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "This takes the book chunk vectors direct from a Google Sheet",
+        "height": 120,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -176
+      ],
+      "id": "ee9c1bca-c090-4fd7-a396-4df2049b1839",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw",
+          "mode": "list",
+          "cachedResultName": "Master Subgenre List 2.1 16th Sept 2025",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 221988336,
+          "mode": "list",
+          "cachedResultName": "subgenres2.0_extendedv3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1W4n_FwcjPIHCN5eBUGDgVmjcOW6rxy5wOiBjIvzKaRw/edit#gid=221988336"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -144,
+        288
+      ],
+      "id": "cf047154-d17c-46c2-9c33-995712f4329a",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "This takes the subgenres",
+        "height": 120,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        144
+      ],
+      "id": "d69dda23-d4c9-4078-9d0e-466970544d3c",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mode: Run Once for All Items\n\n// 1) Load all merged items\nconst merged = $input.all();\n\n// 2) Helpers\nconst getVecField = j => j?.embedding ?? j?.Embedding ?? j?.Vector ?? j?.vector ?? j?.VEC;\n\nconst parseVec = v => {\n  if (Array.isArray(v)) return v.map(Number).filter(Number.isFinite);\n  if (typeof v === 'string') {\n    return v\n      .trim()\n      .replace(/^[\\[\\(]|[\\]\\)]$/g, '')\n      .split(',')\n      .map(x => Number(String(x).trim()))\n      .filter(Number.isFinite);\n  }\n  return [];\n};\n\nfunction cosine(a, b) {\n  const n = Math.min(a.length, b.length);\n  if (!n) return 0;\n  let dot = 0, na = 0, nb = 0;\n  for (let i = 0; i < n; i++) {\n    const x = a[i], y = b[i];\n    dot += x * y; na += x * x; nb += y * y;\n  }\n  const denom = Math.sqrt(na) * Math.sqrt(nb);\n  return denom ? dot / denom : 0;\n}\n\nfunction mean(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }\nfunction stdev(arr){\n  const m = mean(arr);\n  const n = arr.length;\n  if (n < 2) return 0;\n  const v = arr.reduce((s,x)=>s+(x-m)*(x-m),0)/(n-1);\n  return Math.sqrt(v);\n}\nfunction topKMean(arr, k){\n  if (!arr.length) return 0;\n  const kk = Math.min(k, arr.length);\n  const sorted = [...arr].sort((a,b)=>b-a).slice(0, kk);\n  return mean(sorted);\n}\nfunction trimmedMean(arr){\n  const n = arr.length;\n  if (!n) return 0;\n  if (n >= 10) {\n    const t = Math.floor(n * 0.10);\n    const sorted = [...arr].sort((a,b)=>a-b).slice(t, n - t);\n    return mean(sorted.length ? sorted : arr);\n  }\n  if (n >= 4) {\n    const sorted = [...arr].sort((a,b)=>a-b).slice(1, n-1);\n    return mean(sorted);\n  }\n  return mean(arr);\n}\n\n// 3) Split inputs into book chunks vs sub-genres\nconst isSubgenre = j =>\n  !!(j && (j[\"Sub Genre\"] !== undefined\n        || j.subgenre !== undefined\n        || j[\"Prototype Text\"] !== undefined));\n\nconst isChunk = j => (!isSubgenre(j) && getVecField(j) !== undefined);\n\n// Build arrays with parsed vectors\nconst chunks = merged\n  .map(i => ({ raw: i, j: i.json }))\n  .filter(({j}) => isChunk(j))\n  .map(({j}) => ({\n    row_number: j.row_number ?? j.chunk_index ?? null,\n    text: j.col_2 ?? j[\"col_2\"] ?? j.text ?? j[\"text chunks\"] ?? null,\n    vec: parseVec(getVecField(j))\n  }))\n  .filter(c => c.vec.length);\n\nconst subgenres = merged\n  .map(i => ({ raw: i, j: i.json }))\n  .filter(({j}) => isSubgenre(j))\n  .map(({j}) => ({\n    sub_index: j.row_number ?? j.sub_index ?? null,\n    subgenre: j[\"Sub Genre\"] ?? j.subgenre ?? null,\n    description: j[\"Prototype Text\"] ?? j.prototype_text\n              ?? j[\"Short Description\"] ?? j.description ?? null,\n    vec: parseVec(getVecField(j))\n  }))\n  .filter(s => s.vec.length);\n\nif (!chunks.length) throw new Error(\"No book chunk vectors found.\");\nif (!subgenres.length) throw new Error(\"No sub-genre vectors found.\");\n\n// 4) For each sub-genre compute similarity to every chunk\nconst results = subgenres.map(sg => {\n  const scores = chunks.map((c, idx) => ({\n    idx,\n    row_number: c.row_number,\n    score: cosine(sg.vec, c.vec)\n  }));\n\n  const scoreVals = scores.map(x => x.score);\n  const m = mean(scoreVals);\n  const mx = Math.max(...scoreVals);\n  const sd = stdev(scoreVals);\n  const t3 = topKMean(scoreVals, 3);\n  const tm = trimmedMean(scoreVals);\n\n  const topEv = [...scores].sort((a,b)=>b.score-a.score).slice(0,3)\n               .map(x => `${x.row_number ?? x.idx}:${x.score.toFixed(4)}`).join(\" | \");\n\n  return {\n    sub_index: sg.sub_index,\n    subgenre: sg.subgenre,\n    description: sg.description,\n    mean_cosine: m,\n    top3_mean_cosine: t3,\n    trimmed_mean_cosine: tm,\n    max_cosine: mx,\n    stdev_cosine: sd,\n    count: scoreVals.length,\n    _scores_for_norm: m,\n    evidence_top_chunks: topEv\n  };\n});\n\n// 5) Global normalisation for display_0_to_10 and z\nconst means = results.map(r => r.mean_cosine);\nconst gMean = mean(means);\nconst gStd  = stdev(means);\nconst minM  = Math.min(...means);\nconst maxM  = Math.max(...means);\nconst span  = maxM - minM || 1;\n\nconst final = results.map(r => {\n  const z = gStd ? (r.mean_cosine - gMean) / gStd : 0;\n  const display = 10 * (r.mean_cosine - minM) / span;\n  return {\n    json: {\n      sub_index: r.sub_index,\n      subgenre: r.subgenre,\n      description: r.description,\n      display_0_to_10: Number(display.toFixed(2)),\n      mean_cosine: Number(r.mean_cosine.toFixed(6)),\n      top3_mean_cosine: Number(r.top3_mean_cosine.toFixed(6)),\n      trimmed_mean_cosine: Number(r.trimmed_mean_cosine.toFixed(6)),\n      max_cosine: Number(r.max_cosine.toFixed(6)),\n      stdev_cosine: Number(r.stdev_cosine.toFixed(6)),\n      count: r.count,\n      z_mean_cosine: Number(z.toFixed(4)),\n      evidence_top_chunks: r.evidence_top_chunks\n    }\n  };\n});\n\nreturn final;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        112
+      ],
+      "id": "7bc74b55-c23b-4dc6-a390-9138965e947d",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1dxi4_px641nbN0VPYHwJCPLAb4X_mmMykOqDDmuUf2A",
+          "mode": "list",
+          "cachedResultName": "Tuesdays at Six Chunk Page",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dxi4_px641nbN0VPYHwJCPLAb4X_mmMykOqDDmuUf2A/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1810796148,
+          "mode": "list",
+          "cachedResultName": "Cosine V5 No LGBTQIA+",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dxi4_px641nbN0VPYHwJCPLAb4X_mmMykOqDDmuUf2A/edit#gid=1810796148"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "sub_index",
+              "displayName": "sub_index",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "subgenre",
+              "displayName": "subgenre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "display_0_to_10",
+              "displayName": "display_0_to_10",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "mean_cosine",
+              "displayName": "mean_cosine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "top3_mean_cosine",
+              "displayName": "top3_mean_cosine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "trimmed_mean_cosine",
+              "displayName": "trimmed_mean_cosine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "max_cosine",
+              "displayName": "max_cosine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "stdev_cosine",
+              "displayName": "stdev_cosine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "count",
+              "displayName": "count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "z_mean_cosine",
+              "displayName": "z_mean_cosine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "evidence_top_chunks",
+              "displayName": "evidence_top_chunks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        592,
+        112
+      ],
+      "id": "63276369-6c34-4bfa-861c-4b90cb59d7ea",
+      "name": "Google Sheets1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Calculates the Cosine Similarity Scores",
+        "height": 100,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        320,
+        -32
+      ],
+      "id": "f9e383e8-d8a5-4346-8556-f0444da6e143",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Merges the two data sets",
+        "height": 100,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        -48
+      ],
+      "id": "ef52df15-a768-47ac-b7c2-b1a7324fb5e1",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "Writes the scores back to the Google Sheet",
+        "height": 100,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        592,
+        -16
+      ],
+      "id": "64ddaec5-48e8-4c62-a041-9b47ecb9ed25",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        96,
+        112
+      ],
+      "id": "2ae478a8-5955-443e-abab-00de06c9f17d",
+      "name": "Merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking \u2018Execute workflow\u2019": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "aacd9011-3a06-4b2d-9417-8f4bb3d4404b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "668a0da826eff8bdd09242bbe2d2a2dbb4c4bc52c54e40950599c36764b12319"
+  },
+  "id": "Weam9NFLrnfWwfCZ",
+  "tags": []
+}

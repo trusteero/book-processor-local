@@ -1,0 +1,594 @@
+{
+  "name": "Book Chunks into Vectors (Local)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        -64
+      ],
+      "id": "394f5a4e-f6e6-4379-b216-d2c98baba5ef",
+      "name": "When clicking \u2018Execute workflow\u2019"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst input = items.map((item) => Object.values(item.json).join(\" \")).join(\" \");\n\nreturn { input };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        -64
+      ],
+      "id": "c043a779-9c20-480b-9fdb-ee71e49c56a1",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/embeddings",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "nomic-embed-text"
+            },
+            {
+              "name": "input",
+              "value": "={{$json[\"text\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        368,
+        -64
+      ],
+      "id": "c58cdb41-6bda-448e-97e6-fe713f1101df",
+      "name": "HTTP Request",
+      "credentials": {
+        "openAiApi": {
+          "id": "bgKhx5zsrd0jKr2a",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "15QSGmOiu7tP9_BzjlHgijG1WyeaZwEjMmCD7445MnYk",
+          "mode": "list",
+          "cachedResultName": "Frankenstein_Chunks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15QSGmOiu7tP9_BzjlHgijG1WyeaZwEjMmCD7445MnYk/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2004805333,
+          "mode": "list",
+          "cachedResultName": "Frankenstein_Chunks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15QSGmOiu7tP9_BzjlHgijG1WyeaZwEjMmCD7445MnYk/edit#gid=2004805333"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -128,
+        -64
+      ],
+      "id": "7e5fe9db-a92c-455c-b1d3-d6c424313c8d",
+      "name": "Google Sheets1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "19GL9iQdTblJVm79srPfVXLF8nJ2NX5Yl7JjCNjhO7Ck",
+          "mode": "list",
+          "cachedResultName": "Miss Nothing V2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/19GL9iQdTblJVm79srPfVXLF8nJ2NX5Yl7JjCNjhO7Ck/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1502540177,
+          "mode": "list",
+          "cachedResultName": "vector",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/19GL9iQdTblJVm79srPfVXLF8nJ2NX5Yl7JjCNjhO7Ck/edit#gid=1502540177"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Vector": "={{ $json[\"embedding\"] }}"
+          },
+          "matchingColumns": [
+            "Vector"
+          ],
+          "schema": [
+            {
+              "id": "Vector",
+              "displayName": "Vector",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        768,
+        -64
+      ],
+      "id": "8a74cfa8-dd46-4865-adb7-952c9224d168",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  return {\n    json: {\n      embedding: item.json.data[0].embedding\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        -64
+      ],
+      "id": "8ba30e95-2573-4ba0-a1ab-04c37996608c",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "content": "This takes the book chunk text(s)directly from a Google Sheet",
+        "height": 100,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        -176
+      ],
+      "id": "870b8d8c-e746-41a8-9be9-940e3546fb73",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "This smashes them all into one big block of text",
+        "height": 100,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        -176
+      ],
+      "id": "27994930-8062-4069-b922-f4f5b19ad9ed",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "This sends the text to Open AI's Embeddings model to convert to vectors (numbers)",
+        "height": 140,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        320,
+        -224
+      ],
+      "id": "8cd83da1-696c-48ea-859a-18c8a2cf36e5",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "This takes the vectors and organises them into a single long line",
+        "height": 120,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        544,
+        -208
+      ],
+      "id": "0dc71e6d-e7e2-4a56-a463-aa1f4fcc96e0",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "This node writes the vectors to a Google Sheet (the same one as earlier but another page within the sheet)",
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        752,
+        -240
+      ],
+      "id": "dcc0e22a-7847-4bb9-ab7b-7654c010c261",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/embeddings",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"text-embedding-3-small\",\n  \"input\": $items().map(i => i.json.chunk_text)\n} }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 10
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        96,
+        432
+      ],
+      "id": "946940ca-d9fd-4a7a-8331-0c07f6fa9086",
+      "name": "HTTP Request1",
+      "credentials": {
+        "openAiApi": {
+          "id": "bgKhx5zsrd0jKr2a",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1zsCKHm07n3_goCoxm6CP6ftVBGY7uT8xNuHQmtrOMzY",
+          "mode": "list",
+          "cachedResultName": "Snapshot Chunk Page",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zsCKHm07n3_goCoxm6CP6ftVBGY7uT8xNuHQmtrOMzY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1525137336,
+          "mode": "list",
+          "cachedResultName": "Chunks text",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zsCKHm07n3_goCoxm6CP6ftVBGY7uT8xNuHQmtrOMzY/edit#gid=1525137336"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -560,
+        432
+      ],
+      "id": "228d58d9-afe4-4384-adba-82bdfc433afb",
+      "name": "Google Sheets2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1zsCKHm07n3_goCoxm6CP6ftVBGY7uT8xNuHQmtrOMzY",
+          "mode": "list",
+          "cachedResultName": "Snapshot Chunk Page",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zsCKHm07n3_goCoxm6CP6ftVBGY7uT8xNuHQmtrOMzY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1600790302,
+          "mode": "list",
+          "cachedResultName": "Book Vector V2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zsCKHm07n3_goCoxm6CP6ftVBGY7uT8xNuHQmtrOMzY/edit#gid=1600790302"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "chunk_number",
+              "displayName": "chunk_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "embedding_dim",
+              "displayName": "embedding_dim",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "embedding",
+              "displayName": "embedding",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        544,
+        432
+      ],
+      "id": "5afcfcee-a6cb-42ba-9ad8-7a0f9c4ab43e",
+      "name": "Google Sheets3",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6BVp5hoxZ3wIWpdn",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Embeddings response from HTTP node: one item with json.data[]\nconst resp = items[0].json.data;              // array of { embedding, index, ... }\nconst src  = $items(\"Google Sheets2\");        // the read node name\n\nreturn resp.map((d, i) => ({\n  json: {\n    row_number:   src?.[i]?.json?.row_number ?? i + 1,\n    chunk_number: src?.[i]?.json?.chunk_number ?? i + 1,\n    embedding_dim: d.embedding.length,\n    // long line for Sheets\n    embedding: d.embedding.join(\",\")\n    // if you prefer JSON instead: embedding_json: JSON.stringify(d.embedding)\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        432
+      ],
+      "id": "bd176729-bece-403c-af80-e793905633ae",
+      "name": "Code3"
+    },
+    {
+      "parameters": {
+        "content": "This takes the book chunk text(s)directly from a Google Sheet",
+        "height": 100,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        304
+      ],
+      "id": "eeaf6563-06e2-4e57-951c-76581b929f19",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "This sends the 10 (or more) rows to the embeddings in order",
+        "height": 140,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        272
+      ],
+      "id": "fd3af229-b2fd-4525-bd78-963b80a3c00b",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "This outputs them into nice format in rows\n",
+        "height": 120,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        288
+      ],
+      "id": "332f3d56-8c41-48ea-a26f-70a112aaf437",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "Writes to google sheet in rows\n",
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        320,
+        256
+      ],
+      "id": "e297eb4d-f3dc-4b2f-b898-355390c08619",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "Version 2 for the 10 chunks (plus accuracy)\n"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -912,
+        304
+      ],
+      "typeVersion": 1,
+      "id": "28e08ee6-4b53-460c-993a-ffe1880aaf14",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input items have: row_number, Chunk, Text\nconst rows = $items()\n  .map(i => i.json)\n  .sort((a, b) => Number(a.row_number) - Number(b.row_number));\n\nreturn rows.map(r => ({\n  json: {\n    chunk_number: Number(r.Chunk),\n    chunk_text: String(r.Text),\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        432
+      ],
+      "id": "ad653350-9652-4109-9abf-503ccf984d5f",
+      "name": "Code2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking \u2018Execute workflow\u2019": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets1": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        []
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets2": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f013a864-d660-4cd4-9db0-f818bf31c0e7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "668a0da826eff8bdd09242bbe2d2a2dbb4c4bc52c54e40950599c36764b12319"
+  },
+  "id": "HZCmE3pHpuNkQSuX",
+  "tags": []
+}
