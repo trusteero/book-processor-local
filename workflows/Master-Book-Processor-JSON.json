@@ -3,6 +3,21 @@
   "nodes": [
     {
       "parameters": {
+        "content": "\u2699\ufe0f CONFIGURATION\n\nTo modify chunking settings, edit the 'Chunk Text' node:\n\nCHUNK_SIZE = 1000\n  \u2192 Words per chunk\n  \u2192 Default: 1000\n\nOVERLAP_PERCENT = 0.20\n  \u2192 Overlap between chunks\n  \u2192 Default: 0.20 (20%)\n  \u2192 Range: 0.0 to 1.0\n\nUSE_FULL_BOOK = false\n  \u2192 Process entire book?\n  \u2192 false = limit to MAX_CHUNKS\n  \u2192 true = process all chunks\n\nMAX_CHUNKS = 10\n  \u2192 Max chunks when USE_FULL_BOOK=false\n  \u2192 Default: 10 chunks\n\nSee CHUNKING_CONFIG.md for details",
+        "height": 280,
+        "width": 300
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        -250
+      ],
+      "id": "config-sticky-note",
+      "name": "Configuration Guide"
+    },
+    {
+      "parameters": {
         "httpMethod": "POST",
         "path": "master-book-processor-webhook",
         "responseMode": "responseNode",
@@ -84,7 +99,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Preserve chunk_text and add AI analysis\nconst items = $input.all();\n\nreturn items.map(item => ({\n  json: {\n    chunk_text: item.json.chunk_text,\n    book_title: item.json.book_title,\n    chunk_number: item.json.chunk_number,\n    word_count: item.json.word_count,\n    ai_analysis: item.json.response || '',\n    // Keep chunk_text for embeddings\n  }\n}));"
+        "jsCode": "// Preserve chunk_text and add AI analysis\nconst items = $input.all();\n\nconsole.log(`\u2705 PRESERVE CHUNK DATA: Processing ${items.length} chunks`);\n\nreturn items.map(item => ({\n  json: {\n    chunk_text: item.json.chunk_text,\n    book_title: item.json.book_title,\n    chunk_number: item.json.chunk_number,\n    word_count: item.json.word_count,\n    ai_analysis: item.json.response || '',\n    // Keep chunk_text for embeddings\n  }\n}));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -140,9 +155,11 @@
     },
     {
       "parameters": {
-        "filePath": "/Users/eerogetlost/book-processor-local/data/subgenres.json"
+        "method": "GET",
+        "url": "http://localhost:8765/subgenres.json",
+        "options": {}
       },
-      "type": "n8n-nodes-base.readBinaryFile",
+      "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [
         1200,
@@ -153,7 +170,8 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse subgenres from binary file\nconst items = $input.all();\n\n// Get binary data from Read Binary File node\nconst binaryData = items[0].binary?.data;\nif (!binaryData) {\n  throw new Error('No binary data found');\n}\n\n// The data is base64 encoded, decode it\nlet jsonText;\nif (typeof binaryData === 'string') {\n  // If it's a base64 string, decode it\n  const buffer = Buffer.from(binaryData, 'base64');\n  jsonText = buffer.toString('utf8');\n} else if (binaryData.data) {\n  // If it has a data property\n  const buffer = Buffer.from(binaryData.data, 'base64');\n  jsonText = buffer.toString('utf8');\n} else {\n  throw new Error('Unexpected binary data format');\n}\n\n// Parse JSON\nconst subgenres = JSON.parse(jsonText);\n\n// Filter out items without embeddings\nconst validGenres = subgenres.filter(g => g.embedding && Array.isArray(g.embedding));\n\n// Return in the format expected by Calculate Genre Similarity\nreturn validGenres.map(genre => ({\n  json: {\n    'Sub Genre': genre.sub_genre,\n    'Parent Genre': genre.parent_genre,\n    'Prototype Text': genre.prototype_text,\n    'Vector': JSON.stringify(genre.embedding)\n  }\n}));"
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Parse subgenres from HTTP response\nconst items = $input.all();\n\n// HTTP Request automatically parses JSON response\nconst subgenres = items[0].json;\n\nif (!Array.isArray(subgenres)) {\n  throw new Error('Subgenres is not an array');\n}\n\nconsole.log(`\u2705 PARSE SUBGENRES: ${subgenres.length} loaded`);\n\nconst validGenres = subgenres.filter(g => g.embedding && Array.isArray(g.embedding));\n\nconsole.log(`  Valid: ${validGenres.length}`);\n\nreturn validGenres.map(genre => ({\n  json: {\n    'Sub Genre': genre.sub_genre,\n    'Parent Genre': genre.parent_genre,\n    'Prototype Text': genre.prototype_text,\n    'Vector': JSON.stringify(genre.embedding)\n  }\n}));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
