@@ -155,71 +155,71 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "http://localhost:8765/subgenres.json",
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Convert chunks to JSON and write to binary file\nconst items = $input.all();\nconst chunks = items.map(item => item.json);\nconst chunksJson = JSON.stringify(chunks, null, 0);\n\nconsole.log(`📤 Preparing ${chunks.length} chunks (${chunksJson.length} bytes)`);\n\n// Write to binary data that Write Binary File node can use\nconst binaryData = await this.helpers.prepareBinaryData(\n  Buffer.from(chunksJson, 'utf8'),\n  'chunks.json',\n  'application/json'\n);\n\nreturn [{ \n  json: { chunks_count: chunks.length },\n  binary: { data: binaryData }\n}];"
       },
-      "type": "n8n-nodes-base.httpRequest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        -100
+      ],
+      "id": "prepare-binary-data",
+      "name": "Prepare Binary Data"
+    },
+    {
+      "parameters": {
+        "fileName": "=/tmp/n8n_chunks.json",
+        "dataPropertyName": "data"
+      },
+      "type": "n8n-nodes-base.writeBinaryFile",
       "typeVersion": 1,
       "position": [
-        1200,
-        200
+        1450,
+        -100
       ],
-      "id": "bff22d58-1bea-456f-ae9c-b581d109f493",
-      "name": "Load Subgenres JSON"
+      "id": "write-chunks-file",
+      "name": "Write Chunks File"
+    },
+    {
+      "parameters": {
+        "command": "python3 /Users/eerogetlost/book-processor-local/scripts/similarity_with_aggregation.py 2>&1"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1550,
+        -100
+      ],
+      "id": "calculate-and-aggregate-sqlite",
+      "name": "Calculate & Aggregate in SQLite"
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Parse subgenres from HTTP response\nconst items = $input.all();\n\n// HTTP Request automatically parses JSON response\nconst subgenres = items[0].json;\n\nif (!Array.isArray(subgenres)) {\n  throw new Error('Subgenres is not an array');\n}\n\nconsole.log(`\u2705 PARSE SUBGENRES: ${subgenres.length} loaded`);\n\nconst validGenres = subgenres.filter(g => g.embedding && Array.isArray(g.embedding));\n\nconsole.log(`  Valid: ${validGenres.length}`);\n\nreturn validGenres.map(genre => ({\n  json: {\n    'Sub Genre': genre.sub_genre,\n    'Parent Genre': genre.parent_genre,\n    'Prototype Text': genre.prototype_text,\n    'Vector': JSON.stringify(genre.embedding)\n  }\n}));"
+        "jsCode": "// Parse aggregated results from Python stdout\nconst items = $input.all();\nconst stdout = items[0].json.stdout;\n\nif (!stdout) {\n  throw new Error('No output from Python aggregation script');\n}\n\nconsole.log(`📦 Received ${stdout.length} bytes from Python`);\n\n// The output contains progress messages (stderr) and one JSON line (stdout)\n// The last non-empty line is the JSON result\nconst lines = stdout.trim().split('\\n').filter(line => line.length > 0);\nconst jsonLine = lines[lines.length - 1];\n\n// Show progress messages\nif (lines.length > 1) {\n  console.log(`Progress: ${lines.slice(0, -1).join(', ')}`);\n}\n\n// Parse the JSON result\nconst result = JSON.parse(jsonLine);\n\nconsole.log(`✅ Processed ${result.total_chunks} chunks`);\nconsole.log(`✅ Top genre: ${result.top_20_genres[0].subgenre} (${result.top_20_genres[0].votes} votes)`);\n\n// Return as single item (already aggregated)\nreturn [{ json: result }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1200,
-        300
-      ],
-      "id": "json-parser-node-123",
-      "name": "Parse Subgenres JSON"
-    },
-    {
-      "parameters": {
-        "mode": "append"
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [
-        1300,
-        150
-      ],
-      "id": "merge-node-123",
-      "name": "Merge Branches"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Calculate cosine similarity between book and genres WITH EXPLAINABILITY\nconst allInputs = $input.all();\n\nconsole.log('Total inputs received:', allInputs.length);\n\n// Separate book embeddings from genre data\nlet bookItems = [];\nlet genreItems = [];\n\nfor (const item of allInputs) {\n  if (item.json['Sub Genre']) {\n    genreItems.push(item);\n  } else if (item.json.embedding) {\n    bookItems.push(item);\n  }\n}\n\nconsole.log('Book items:', bookItems.length);\nconsole.log('Genre items:', genreItems.length);\n\nif (bookItems.length === 0 || genreItems.length === 0) {\n  throw new Error(`Missing data: books=${bookItems.length}, genres=${genreItems.length}`);\n}\n\n// === UTILITY FUNCTIONS ===\n\nfunction cosineSimilarity(vec1, vec2) {\n  let dot = 0, mag1 = 0, mag2 = 0;\n  for (let i = 0; i < vec1.length; i++) {\n    dot += vec1[i] * vec2[i];\n    mag1 += vec1[i] * vec1[i];\n    mag2 += vec2[i] * vec2[i];\n  }\n  return dot / (Math.sqrt(mag1) * Math.sqrt(mag2));\n}\n\nfunction extractKeywords(text, topN = 10) {\n  if (!text) return [];\n  \n  // Extract meaningful keywords\n  const stopWords = new Set(['the', 'and', 'for', 'that', 'this', 'with', 'from', 'are', 'was', 'were', 'have', 'has', 'had', 'they', 'their', 'them', 'what', 'when', 'where', 'which', 'will', 'would', 'could', 'should', 'been', 'being', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once']);\n  \n  const words = text.toLowerCase()\n    .replace(/[^\\w\\s'-]/g, ' ')\n    .split(/\\s+/)\n    .filter(w => w.length > 3 && !stopWords.has(w));\n  \n  // Count frequency\n  const freq = {};\n  words.forEach(w => freq[w] = (freq[w] || 0) + 1);\n  \n  // Return top N\n  return Object.entries(freq)\n    .sort((a, b) => b[1] - a[1])\n    .slice(0, topN)\n    .map(([word, count]) => ({word, count}));\n}\n\nfunction findMatchingKeywords(bookKeywords, genreText) {\n  if (!genreText || bookKeywords.length === 0) return [];\n  \n  const genreWords = genreText.toLowerCase().split(/\\s+/);\n  const genreSet = new Set(genreWords);\n  \n  return bookKeywords.filter(({word}) => {\n    // Exact match\n    if (genreSet.has(word)) return true;\n    // Partial match (plurals, word stems)\n    return genreWords.some(gw => \n      (gw.length > 4 && word.startsWith(gw.substring(0, 4))) ||\n      (word.length > 4 && gw.startsWith(word.substring(0, 4)))\n    );\n  });\n}\n\n// === MAIN PROCESSING ===\n\nconst results = [];\n\nfor (const bookItem of bookItems) {\n  const bookVector = bookItem.json.embedding;\n  const bookText = bookItem.json.chunk_text || '';\n  const bookTitle = bookItem.json.book_title || 'Unknown';\n  const chunkNum = bookItem.json.chunk_number || bookItem.json.index || 1;\n  \n  // Extract book keywords once\n  const bookKeywords = extractKeywords(bookText, 20);\n  \n  const similarities = genreItems.map(genreItem => {\n    const genreVector = JSON.parse(genreItem.json.Vector);\n    const similarity = cosineSimilarity(bookVector, genreVector);\n    \n    // Get genre prototype text\n    const prototypeText = genreItem.json['Prototype Text'] || '';\n    \n    // Find matching keywords (exact/partial matches)\n    const exactMatches = findMatchingKeywords(bookKeywords, prototypeText);\n    \n    // ALWAYS include top book keywords for this genre\n    // Even if no exact matches, show what words were in the book\n    const topBookKeywords = bookKeywords.slice(0, 8);\n    \n    return {\n      subgenre: genreItem.json['Sub Genre'],\n      parent_genre: genreItem.json['Parent Genre'],\n      prototype_text: prototypeText,\n      similarity: similarity,\n      matching_keywords: exactMatches,           // Exact/partial matches\n      book_keywords: topBookKeywords,            // Top 8 from book\n      keyword_match_count: exactMatches.length   // How many matched\n    };\n  });\n  \n  // Sort by similarity and get top 5\n  similarities.sort((a, b) => b.similarity - a.similarity);\n  const top20 = similarities.slice(0, 20);\n  \n  results.push({\n    json: {\n      book_title: bookTitle,\n      chunk_number: chunkNum,\n      chunk_text: bookText.substring(0, 500),\n      top_genres: top20\n    }\n  });\n}\n\nreturn results;"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1400,
-        100
+        1700,
+        -100
       ],
       "id": "c8e0a98a-072f-44f2-a698-cd321fb81801",
-      "name": "Calculate Genre Similarity"
+      "name": "Parse Aggregated Results"
     },
     {
       "parameters": {
-        "jsCode": "// Aggregate all analysis and similarity results WITH KEYWORDS AND CHUNK DATA\nconst items = $input.all();\n\n// Group by book\nconst bookData = {\n  book_title: items[0]?.json.book_title || 'Unknown',\n  total_chunks: items.length,\n  genre_matches: {},\n  analysis_summary: [],\n  chunk_details: []  // NEW: Store chunk-by-chunk data\n};\n\n// Aggregate genre votes AND collect keyword explanations AND chunk data\nfor (const item of items) {\n  // Store chunk-level details\n  if (item.json.chunk_number && item.json.top_genres) {\n    bookData.chunk_details.push({\n      chunk_number: item.json.chunk_number,\n      chunk_preview: item.json.chunk_text ? item.json.chunk_text.substring(0, 150) : '',\n      top_5_genres: item.json.top_genres.slice(0, 5).map(g => ({\n        subgenre: g.subgenre,\n        parent: g.parent_genre,\n        similarity: g.similarity\n      }))\n    });\n  }\n  \n  if (item.json.top_genres) {\n    for (const genre of item.json.top_genres) {\n      const key = genre.subgenre;\n      if (!bookData.genre_matches[key]) {\n        bookData.genre_matches[key] = {\n          subgenre: genre.subgenre,\n          parent: genre.parent_genre,\n          prototype_text: genre.prototype_text,\n          votes: 0,\n          avg_similarity: 0,\n          scores: [],\n          matching_keywords: genre.matching_keywords || [],\n          book_keywords: genre.book_keywords || []\n        };\n      }\n      bookData.genre_matches[key].votes++;\n      bookData.genre_matches[key].scores.push(genre.similarity);\n      \n      // Merge matching keywords\n      if (genre.matching_keywords) {\n        const existing = new Set(bookData.genre_matches[key].matching_keywords.map(k => k.word));\n        for (const kw of genre.matching_keywords) {\n          if (!existing.has(kw.word)) {\n            bookData.genre_matches[key].matching_keywords.push(kw);\n          }\n        }\n      }\n    }\n  }\n}\n\n// Calculate averages\nfor (const key in bookData.genre_matches) {\n  const match = bookData.genre_matches[key];\n  match.avg_similarity = match.scores.reduce((a, b) => a + b, 0) / match.scores.length;\n  delete match.scores;\n}\n\n// Sort by votes and similarity\nconst sortedGenres = Object.values(bookData.genre_matches)\n  .sort((a, b) => b.votes - a.votes || b.avg_similarity - a.avg_similarity);\n\n// Sort chunks by chunk_number\nbookData.chunk_details.sort((a, b) => a.chunk_number - b.chunk_number);\n\nreturn [{\n  json: {\n    ...bookData,\n    top_20_genres: sortedGenres.slice(0, 20),\n    processing_complete: true,\n    timestamp: new Date().toISOString()\n  }\n}];"
+        "jsCode": "// Add timestamp to already-aggregated results from Python\nconst items = $input.all();\nconst data = items[0].json;\n\nconsole.log(`📊 Final results: ${data.total_chunks} chunks, ${data.top_20_genres.length} genres`);\n\n// Just add timestamp\nreturn [{\n  json: {\n    ...data,\n    timestamp: new Date().toISOString()\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1600,
-        100
+        1850,
+        -100
       ],
       "id": "dc263151-d7fd-4f0d-9d14-4efcc191723d",
-      "name": "Aggregate Results"
+      "name": "Add Timestamp"
     },
     {
       "parameters": {
@@ -437,7 +437,29 @@
         ]
       ]
     },
-    "Parse Subgenres JSON": {
+    "Load Subgenres from SQLite": {
+      "main": [
+        [
+          {
+            "node": "Read All Subgenres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read All Subgenres": {
+      "main": [
+        [
+          {
+            "node": "Parse Subgenres Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Subgenres Output": {
       "main": [
         [
           {
@@ -471,6 +493,17 @@
       ]
     },
     "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Timestamp": {
       "main": [
         [
           {
@@ -556,7 +589,51 @@
       "main": [
         [
           {
-            "node": "Merge Branches",
+            "node": "Prepare Binary Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Binary Data": {
+      "main": [
+        [
+          {
+            "node": "Write Chunks File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Chunks File": {
+      "main": [
+        [
+          {
+            "node": "Calculate & Aggregate in SQLite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate & Aggregate in SQLite": {
+      "main": [
+        [
+          {
+            "node": "Parse Aggregated Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Aggregated Results": {
+      "main": [
+        [
+          {
+            "node": "Add Timestamp",
             "type": "main",
             "index": 0
           }
